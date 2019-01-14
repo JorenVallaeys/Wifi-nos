@@ -1,0 +1,57 @@
+#!/bin/sh 
+# place this file at: /etc/hotplug.d/iface/99-login-fon
+
+# Configurations
+FON_USERNAME=joaospabreu@gmail.com
+FON_PASSWORD=miratejo123
+FON_DELAY_UP=3
+
+COOKIE_JAR_PATH=/tmp/nos-fon-cookie-jar.$INTERFACE
+. /lib/functions.sh
+
+clean () {
+  [ -f $COOKIE_JAR_PATH ] && rm -f $COOKIE_JAR_PATH
+}
+
+logger -t FonLogin "Starting on $INTERFACE:$DEVICE -> $ACTION"
+
+attempt () {
+    local INDICATOR="action=\"/nos"
+    local POST_URL=""
+    local DOMAIN_URL="https://captiveportal.nos.pt"
+    local TARGET="http://sapo.pt"
+
+    logger -t FonLogin "Trying to fetch a website"
+    DATA="$(curl --insecure --interface $DEVICE --location --cookie-jar $COOKIE_JAR_PATH $TARGET)"
+
+    logger -t FonLogin "Trying to get post url"
+    POST_URL="$(echo "$DATA" | grep $INDICATOR | cut -d \" -f 6 | sed -r 's/\&amp;/\&/g')"
+
+    if [ -n "$POST_URL" ]; then
+        logger -t FonLogin "Post URL found, trying to login"
+        curl \
+            --insecure \
+            --interface $DEVICE \
+            --location \
+            --cookie-jar $COOKIE_JAR_PATH \
+            --header 'cache-control: no-cache' \
+            --header 'content-type: application/x-www-form-urlencoded' \
+            --data "userFake=${FON_USERNAME}&UserName=NOS%2F${FON_USERNAME}&Password=${FON_PASSWORD}&rememberMe=true&_rememberMe=on" \
+            "$DOMAIN_URL$POST_URL"
+    fi
+
+    clean
+}
+
+case "$ACTION" in
+    ifup)
+        logger -t FonLogin "Waiting $FON_DELAY_UP seconds before attempt"
+        sleep $FON_DELAY_UP;
+        logger -t FonLogin "Attempting to login at FON"
+        attempt
+    ;;
+    update)
+        logger -t FonLogin "Attempting to update login at FON"
+        attempt
+    ;;
+esac
